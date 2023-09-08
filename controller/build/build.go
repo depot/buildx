@@ -190,12 +190,12 @@ func RunBuild(ctx context.Context, dockerCli command.Cli, in controllerapi.Build
 // inspect the result and debug the cause of that error.
 func buildTargets(ctx context.Context, dockerCli command.Cli, ng *store.NodeGroup, nodes []builder.Node, opts map[string]build.Options, progress progress.Writer, generateResult bool) (*client.SolveResponse, *build.ResultHandle, error) {
 	var res *build.ResultHandle
-	var resp map[string]*client.SolveResponse
+	var resp []build.DepotBuildResponse
 	var err error
 	if generateResult {
 		var mu sync.Mutex
 		var idx int
-		resp, err = build.BuildWithResultHandler(ctx, nodes, opts, dockerutil.NewClient(dockerCli), confutil.ConfigDir(dockerCli), progress, func(driverIndex int, gotRes *build.ResultHandle) {
+		resp, err = build.BuildWithResultHandler(ctx, nodes, opts, dockerutil.NewClient(dockerCli), confutil.ConfigDir(dockerCli), progress, nil, func(driverIndex int, gotRes *build.ResultHandle) {
 			mu.Lock()
 			defer mu.Unlock()
 			if res == nil || driverIndex < idx {
@@ -203,12 +203,17 @@ func buildTargets(ctx context.Context, dockerCli command.Cli, ng *store.NodeGrou
 			}
 		})
 	} else {
-		resp, err = build.Build(ctx, nodes, opts, dockerutil.NewClient(dockerCli), confutil.ConfigDir(dockerCli), progress)
+		resp, err = build.Build(ctx, nodes, opts, dockerutil.NewClient(dockerCli), confutil.ConfigDir(dockerCli), progress, nil)
 	}
 	if err != nil {
 		return nil, res, err
 	}
-	return resp[defaultTargetName], res, err
+	for _, r := range resp {
+		if r.Name == defaultTargetName && len(r.NodeResponses) > 0 {
+			return r.NodeResponses[0].SolveResponse, res, nil
+		}
+	}
+	return nil, res, err
 }
 
 func wrapBuildError(err error, bake bool) error {

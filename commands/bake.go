@@ -201,16 +201,24 @@ func runBake(dockerCli command.Cli, targets []string, in bakeOptions, cFlags com
 		return nil
 	}
 
-	resp, err := build.Build(ctx, nodes, bo, dockerutil.NewClient(dockerCli), confutil.ConfigDir(dockerCli), printer)
+	resp, err := build.Build(ctx, nodes, bo, dockerutil.NewClient(dockerCli), confutil.ConfigDir(dockerCli), printer, nil)
 	if err != nil {
 		return wrapBuildError(err, true)
 	}
 
 	if len(in.metadataFile) > 0 {
 		dt := make(map[string]interface{})
-		for t, r := range resp {
-			dt[t] = decodeExporterResponse(r.ExporterResponse)
+		for _, buildRes := range resp {
+			metadata := map[string]interface{}{}
+			for _, nodeRes := range buildRes.NodeResponses {
+				nodeMetadata := decodeExporterResponse(nodeRes.SolveResponse.ExporterResponse)
+				for k, v := range nodeMetadata {
+					metadata[k] = v
+				}
+			}
+			dt[buildRes.Name] = metadata
 		}
+
 		if err := writeMetadataFile(in.metadataFile, dt); err != nil {
 			return err
 		}
